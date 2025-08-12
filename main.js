@@ -162,6 +162,24 @@ function waitFor(conditionFunc, maxRetries, intervalMs, description) {
     return false;
 }
 
+ /**
+ * 唤醒屏幕并等待亮起
+ */
+function wakeAndWait() {
+    if (!device.isScreenOn()) {
+        log("屏幕未点亮，尝试唤醒...");
+        device.wakeUp();
+        let wakeSuccess = waitFor(() => device.isScreenOn(), 10, 300, "等待屏幕点亮");
+        if (!wakeSuccess) {
+            log("唤醒屏幕失败。");
+            return false;
+        }
+        log("屏幕已成功唤醒。");
+    } else {
+        log("屏幕已点亮。");
+    }
+    return true;
+}
 // ========================
 // === 核心功能函数区域 ===
 // ========================
@@ -173,33 +191,25 @@ function waitFor(conditionFunc, maxRetries, intervalMs, description) {
  */
 function attemptSingleUnlock() {
     let unlockMethod = config.解锁方式;
-    let randomOffsetY = random(-150, 150); // 随机偏移量，增加滑动鲁棒性
+    let randomOffsetY = random(-10, 10); // 随机偏移量，增加滑动鲁棒性
 
-    // 1. 确保屏幕亮起
-    if (!device.isScreenOn()) {
-        log("屏幕未点亮，尝试唤醒...");
-        device.wakeUp();
-        sleep(SHORT_TIMEOUT); // 等待屏幕亮起稳定
-        if (!device.isScreenOn()) {
-            log("唤醒屏幕失败。");
-            return false; // 唤醒失败，本次尝试中止
-        }
-        log("屏幕已成功唤醒。");
-    } else {
-        log("屏幕已点亮。");
+    if (!wakeAndWait()) return false; //优化滑动解锁方式
+
+    // 如果是纯上滑解锁
+    if (unlockMethod != 1 && unlockMethod != 2) {
+        log("执行上滑解锁...");
+        sleep(700);
+        swipe(dwidth / 2, dheight * 0.7 + randomOffsetY, dwidth / 2, dheight * 0.3 + randomOffsetY, 201);
+        sleep(800);
+        return true;
     }
-    if (unlockMethod != 1 && unlockMethod != 2 ) {
-        log("上滑解锁");
-        swipe(dwidth / 2, dheight * 0.7 + randomOffsetY, dwidth / 2, dheight * 0.3 + randomOffsetY, 200); // 上滑
-        sleep(500); // 等待滑动动画
-        return true; // 
-    }
+
     // 2. 尝试上滑进入解锁界面 
     log("上滑以显示解锁界面...");
     let unlockInterfaceVisible = false;
     for (let i = 0; i < 3; i++) { // 最多尝试3次上滑
         if (waitFor(() => {
-            swipe(dwidth / 2, dheight * 0.7 + randomOffsetY, dwidth / 2, dheight * 0.3 + randomOffsetY, 200); // 上滑
+            swipe(dwidth / 2, dheight * 0.7 + randomOffsetY, dwidth / 2, dheight * 0.3 + randomOffsetY, 201); // 上滑
             sleep(500); // 等待滑动动画
             return textMatches(/.*?(紧急呼叫|Emergency call|图案|数字|混合|Pattern|PIN|Password).*?/).exists(); // 检查解锁界面标志
         }, 5, 1000, "上滑进入解锁界面")){
@@ -322,7 +332,7 @@ function killApp(packageName) {
     log(`尝试结束应用: ${packageName}`);
     try {
         app.openAppSetting(packageName);
-        sleep(1500); // 等待设置页面加载
+        sleep(4000); // 等待设置页面加载
         // 查找“结束运行”或“强制停止”按钮
         let stopButton = textMatches(/(结束运行|强行停止|FORCE STOP|Force stop)/).findOne(DEFAULT_TIMEOUT);
         if (stopButton && stopButton.enabled()) {
@@ -343,7 +353,7 @@ function killApp(packageName) {
     } catch (e) {
         console.error(`结束应用 ${packageName} 时出错: ${e}`);
     }
-    sleep(1000); // 等待结束动画
+    sleep(2000); // 等待结束动画
 }
 
 /**
@@ -916,6 +926,7 @@ function miniAppSign() {
             return;
         }
         // 等待微信小程序加载
+        sleep(5000); //延长等待时间，旧机型加载需要多一些时间
         if (waitFor(() => {
             let editProfileBtn = textContains('编辑资料').findOne(DEFAULT_TIMEOUT);
             let dailySignBtn = textContains("每日签到").exists();
@@ -932,7 +943,6 @@ function miniAppSign() {
             }
         }, 2, SHORT_TIMEOUT, "微信小程序加载")) { // 等待时间加长
             log("进入微信小程序");
-            sleep(1000);
             // 循环检查签到状态并尝试签到
              success = waitFor(() => {
                 if (text("已签到").exists()) {
@@ -941,7 +951,7 @@ function miniAppSign() {
                 } else {
                     let signButton = text("去签到").findOne(SHORT_TIMEOUT);
                     if (safeClick(signButton, "点击 '去签到'")) {
-                        sleep(1500); // 等待签到动画或状态更新
+                        sleep(2500); // 等待签到动画或状态更新
                         // 再次检查是否已签到
                         return text("已签到").exists();
                     } else {
